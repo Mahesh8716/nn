@@ -1,32 +1,40 @@
 import torch
 from fastai.vision.all import *
-import pickle
+from torch.utils.data import DataLoader
 
-# Load dataset
-path = untar_data(URLs.MNIST_SAMPLE)
-threes = (path/'train'/'3').ls().sorted()
-sevens = (path/'train'/'7').ls().sorted()
+# Initialize the model's parameters
+def init_params(size, std=1.0):
+    return (torch.randn(size) * std).requires_grad_()
 
-# Convert images to tensors
-threes_array = [tensor(Image.open(image)) for image in threes]
-sevens_array = [tensor(Image.open(image)) for image in sevens]
-threes_stack = torch.stack(threes_array).float() / 255
-sevens_stack = torch.stack(sevens_array).float() / 255
-
-# Prepare training data
-train_x = torch.cat([threes_stack, sevens_stack])
-train_x = train_x.view((-1, 28*28))
-train_y = tensor([1] * len(threes_stack) + [0] * len(sevens_stack)).unsqueeze(1)
-
-# Define model
-init_params = lambda size, std=1.0: (torch.randn(size) * std).requires_grad_()
-weights = init_params((28 * 28, 1))
-bias = init_params(1)
-
+# Define model and loss function
 def linear_model(xb, weights, bias):
     return xb @ weights + bias
 
-# Save the model
-model_data = {"weights": weights, "bias": bias}
-with open("model.pkl", "wb") as f:
-    pickle.dump(model_data, f)
+def loss_fun(pred, targ):
+    pred = pred.sigmoid()
+    return torch.where(targ == 1, 1 - pred, pred).mean()
+
+# Function to calculate gradients
+def cal_grad(X, y, weights, bias, model, loss_fun):
+    pred = model(X, weights, bias)
+    loss = loss_fun(pred, y)
+    loss.backward()
+
+# Load model weights and bias
+weights = init_params((28 * 28, 1))
+bias = init_params(1)
+
+# Define a function for prediction
+def predict(model_input):
+    model_input_tensor = torch.tensor(model_input).float().view(1, -1)  # Reshaping input for the model
+    pred = linear_model(model_input_tensor, weights, bias)
+    return pred.sigmoid().item()  # Convert output to sigmoid (probability) and return
+
+# Initialize training and validation datasets
+path = untar_data(URLs.MNIST_SAMPLE)
+train_x, train_y = prepare_data(path)  # Implement your data processing function here
+validate_x, validate_y = prepare_data(path)  # Implement your data processing function here
+
+# Convert datasets into DataLoader
+train_dset = list(zip(train_x, train_y))
+train_dl = DataLoader(train_dset, batch_size=256)

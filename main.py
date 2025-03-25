@@ -1,30 +1,21 @@
-from fastapi import FastAPI, File, UploadFile
-import torch
-from PIL import Image
-import pickle
-import io
+from fastapi import FastAPI
+from pydantic import BaseModel
+from model import predict
 
 app = FastAPI()
 
-# Load the saved model
-with open("model.pkl", "rb") as f:
-    model_data = pickle.load(f)
+# Define request body structure for prediction
+class ModelInput(BaseModel):
+    features: list  # List of 28x28 pixel values for image input
 
-weights = model_data["weights"]
-bias = model_data["bias"]
+@app.post("/predict")
+def get_prediction(input_data: ModelInput):
+    try:
+        prediction = predict(input_data.features)
+        return {"prediction": prediction}
+    except Exception as e:
+        return {"error": str(e)}
 
-def predict(image: Image.Image):
-    img_tensor = torch.tensor(image).float() / 255
-    img_tensor = img_tensor.view(-1, 28 * 28)
-    pred = torch.sigmoid(img_tensor @ weights + bias)
-    return "Three" if pred.item() > 0.5 else "Seven"
-
-@app.post("/predict/")
-async def classify_image(file: UploadFile = File(...)):
-    image = Image.open(io.BytesIO(await file.read())).convert("L").resize((28, 28))
-    prediction = predict(image)
-    return {"prediction": prediction}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.get("/")
+def home():
+    return {"message": "Neural Network Microservice is Running"}
