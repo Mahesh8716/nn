@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 # Function to create and prepare the model
 def create_model():
-    path = untar_data(URLs.MNIST_SAMPLE)
+    path = Path('mnist_sample')
     threes = (path/'train'/'3').ls().sorted()
     sevens = (path/'train'/'7').ls().sorted()
 
