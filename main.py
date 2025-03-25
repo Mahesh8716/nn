@@ -1,21 +1,42 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from model import predict
+# main.py
+from flask import Flask, request, jsonify
+from models import create_model, predict_image, train_model
+from PIL import Image
+from io import BytesIO
 
-app = FastAPI()
+app = Flask(__name__)
 
-# Define request body structure for prediction
-class ModelInput(BaseModel):
-    features: list  # List of 28x28 pixel values for image input
+# Load the model once
+model, weights, bias, train_dl = create_model()
 
-@app.post("/predict")
-def get_prediction(input_data: ModelInput):
-    try:
-        prediction = predict(input_data.features)
-        return {"prediction": prediction}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/")
+@app.route('/')
 def home():
-    return {"message": "Neural Network Microservice is Running"}
+    return "Welcome to the MNIST Prediction Service!"
+
+@app.route('/train', methods=['POST'])
+def train():
+    # Train the model when the endpoint is hit
+    try:
+        train_model(model, train_dl, weights, bias, learning_rate=0.1, epochs=5)  # Adjust epochs as needed
+        return jsonify({"status": "Model training completed!"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+
+    # If file is present, get image and predict
+    img_bytes = file.read()
+    img = Image.open(BytesIO(img_bytes))
+    prediction = predict_image(img, model, weights, bias)
+    
+    return jsonify({"prediction": prediction})
+
+if __name__ == '__main__':
+    app.run(debug=True)

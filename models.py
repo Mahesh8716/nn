@@ -1,40 +1,91 @@
-import torch
+# models.py
 from fastai.vision.all import *
-from torch.utils.data import DataLoader
+import torch
+from PIL import Image
+from torch.utils.data import DataLoader, TensorDataset
 
-# Initialize the model's parameters
-def init_params(size, std=1.0):
-    return (torch.randn(size) * std).requires_grad_()
+# Function to create and prepare the model
+def create_model():
+    path = untar_data(URLs.MNIST_SAMPLE)
+    threes = (path/'train'/'3').ls().sorted()
+    sevens = (path/'train'/'7').ls().sorted()
 
-# Define model and loss function
-def linear_model(xb, weights, bias):
-    return xb @ weights + bias
+    # Prepare training data
+    threes_array = [tensor(Image.open(image)) for image in threes]
+    threes_stack = torch.stack(threes_array).float() / 255
+    sevens_array = [tensor(Image.open(image)) for image in sevens]
+    sevens_stack = torch.stack(sevens_array).float() / 255
 
-def loss_fun(pred, targ):
-    pred = pred.sigmoid()
-    return torch.where(targ == 1, 1 - pred, pred).mean()
+    train_x = torch.cat([threes_stack, sevens_stack])
+    train_x = train_x.view((-1, 28*28))  # Flatten images to vectors
 
-# Function to calculate gradients
-def cal_grad(X, y, weights, bias, model, loss_fun):
-    pred = model(X, weights, bias)
-    loss = loss_fun(pred, y)
-    loss.backward()
+    train_y = tensor([1]*len(threes_stack) + [0]*len(sevens_stack))  # Labels: 1 for '3', 0 for '7'
+    train_y = train_y.unsqueeze(1)  # Add extra dimension for output layer
 
-# Load model weights and bias
-weights = init_params((28 * 28, 1))
-bias = init_params(1)
+    # Initialize weights and bias for linear model
+    weights = torch.randn((28 * 28, 1), requires_grad=True)
+    bias = torch.randn(1, requires_grad=True)
 
-# Define a function for prediction
-def predict(model_input):
-    model_input_tensor = torch.tensor(model_input).float().view(1, -1)  # Reshaping input for the model
-    pred = linear_model(model_input_tensor, weights, bias)
-    return pred.sigmoid().item()  # Convert output to sigmoid (probability) and return
+    # Prepare DataLoader
+    dataset = TensorDataset(train_x, train_y)
+    train_dl = DataLoader(dataset, batch_size=64, shuffle=True)
 
-# Initialize training and validation datasets
-path = untar_data(URLs.MNIST_SAMPLE)
-train_x, train_y = prepare_data(path)  # Implement your data processing function here
-validate_x, validate_y = prepare_data(path)  # Implement your data processing function here
+    # Linear model (simplified version)
+    def linear_model(xb, weights, bias):
+        return xb @ weights + bias
 
-# Convert datasets into DataLoader
-train_dset = list(zip(train_x, train_y))
-train_dl = DataLoader(train_dset, batch_size=256)
+    return linear_model, weights, bias, train_dl
+
+
+def train_model(model, train_dl, weights, bias, learning_rate=0.1, epochs=10):
+    def loss_fun(pred, targ):
+        pred = pred.sigmoid()
+        return torch.where(targ == 1, 1 - pred, pred).mean()
+
+    def cal_grad(X, y, weights, bias, model, loss_fun):
+        pred = model(X, weights, bias)
+        loss = loss_fun(pred, y)
+        loss.backward()
+
+    def accuracy(pred, targ):
+        preds = pred.sigmoid() > 0.5  # Convert predictions to binary (0 or 1)
+        return (preds == targ).float().mean()
+
+    # Training loop
+    for epoch in range(epochs):
+        total_loss = 0
+        total_acc = 0
+        for X, y in train_dl:
+            cal_grad(X, y, weights, bias, model, loss_fun)
+            for p in (weights, bias):
+                p.data -= p.grad * learning_rate
+                p.grad.zero_()
+            
+            # Accumulate loss
+            pred = model(X, weights, bias)
+            loss = loss_fun(pred, y)
+            total_loss += loss.item()
+
+            # Calculate accuracy
+            acc = accuracy(pred, y)
+            total_acc += acc.item()
+
+        avg_loss = total_loss / len(train_dl)
+        avg_acc = total_acc / len(train_dl)
+
+        print(f'Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f}, Accuracy: {avg_acc:.4f}')
+
+
+
+
+# Model prediction function
+def predict_image(image_path, model, weights, bias):
+    img = Image.open(image_path).convert('L')  # Convert to grayscale
+    img = tensor(img).float() / 255  # Normalize to [0, 1]
+    img = img.view(-1, 28 * 28)  # Flatten the image to a 1D vector
+    
+    # Get model output
+    output = model(img, weights, bias)
+    prediction = torch.sigmoid(output).item()  # Sigmoid output for probability
+    
+    return prediction
