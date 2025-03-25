@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 from models import create_model, predict_image, train_model
 from PIL import Image
 from io import BytesIO
+import os
 
 app = Flask(__name__)
 
