@@ -34,4 +34,4 @@ def predict():
     return jsonify({"prediction": int(prediction)})  # Convert to int for JSON response
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 4000)))
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
