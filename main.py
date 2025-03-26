@@ -1,44 +1,37 @@
-# main.py
 from flask import Flask, request, jsonify
-from models import create_model, predict_image, train_model
+from models import load_model, predict_image
 from PIL import Image
 from io import BytesIO
 import os
 
 app = Flask(__name__)
 
-# Load the model once
-model, weights, bias, train_dl = create_model()
-
-@app.route('/')
-def home():
-    return "Welcome to the MNIST Prediction Service!"
+# Load the pre-trained model once
+try:
+    model, weights, bias = load_model()
+except FileNotFoundError as e:
+    print(e)
+    exit(1)
 
 @app.route('/train', methods=['POST'])
-def train():
-    # Train the model when the endpoint is hit
-    try:
-        train_model(model, train_dl, weights, bias, learning_rate=0.1, epochs=5)  # Adjust epochs as needed
-        return jsonify({"status": "Model training completed!"}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
+def home():
+    return "Welcome to the MNIST Prediction Service!"
 
 @app.route('/predict', methods=['POST'])
 def predict():
     if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
+        return jsonify({"error": "No file provided"}), 400
     file = request.files['file']
     
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
 
-    # If file is present, get image and predict
+    # Read image and make prediction
     img_bytes = file.read()
     img = Image.open(BytesIO(img_bytes))
     prediction = predict_image(img, model, weights, bias)
     
-    return jsonify({"prediction": prediction})
+    return jsonify({"prediction": int(prediction)})  # Convert to int for JSON response
 
 if __name__ == '__main__':
-    # app.run(debug=True)
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 4000)))
